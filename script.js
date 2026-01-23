@@ -297,29 +297,17 @@ function sendToBack(layerId) {
 }
 
 function createElementFromData(data) {
-  let el = document.createElement("div");
+  const el = document.createElement("div");
 
   el.classList.add("element");
   el.dataset.id = data.id;
   el.dataset.type = data.type;
   el.style.position = "absolute";
 
-  if (data.type === "rectangle") {
-    el.style.backgroundColor = "#d9d9d9";
-  }
-
-  if (data.type === "circle") {
-    el.style.backgroundColor = "#d9d9d9";
-    el.style.borderRadius = "50%";
-  }
-
   if (data.type === "text") {
     el.contentEditable = false;
-    el.innerText = data.text || "Enter your text";
     el.style.minWidth = "50px";
     el.style.minHeight = "20px";
-    el.style.color = "#d9d9d9";
-    el.style.fontSize = "16px";
     el.style.padding = "2px";
     el.style.background = "transparent";
   }
@@ -332,6 +320,7 @@ function createElementFromData(data) {
 
 window.addEventListener("keydown", (e) => {
   if (!selectedLayerId) return;
+  if (isEditingText) return;
 
   if ((e.ctrlKey || e.metaKey) && e.key === "]") {
     e.preventDefault();
@@ -490,6 +479,14 @@ tools.forEach((tool) => {
     }
   });
 });
+
+function setTool(toolId) {
+  currentTool = toolId;
+
+  tools.forEach((t) => t.classList.remove("active"));
+  const btn = document.getElementById(toolId);
+  if (btn) btn.classList.add("active");
+}
 
 //---------------DRAW-----------------
 canvasViewport.addEventListener("mousedown", (e) => {
@@ -1175,6 +1172,34 @@ document.getElementById("save").addEventListener("click", () => {
 });
 document.getElementById("export-json").addEventListener("click", exportJSON);
 document.getElementById("export-html").addEventListener("click", exportHTML);
+
+window.addEventListener("keydown", (e) => {
+  if (isEditingText) return;
+
+  const tag = document.activeElement.tagName;
+  if (tag === "INPUT" || tag === "TEXTAREA") return;
+
+  if (e.ctrlKey || e.metaKey) return;
+
+  switch (e.key.toLowerCase()) {
+    case "v":
+      setTool("select");
+      break;
+
+    case "r":
+      setTool("rectangle");
+      break;
+
+    case "o":
+      setTool("circle");
+      break;
+
+    case "t":
+      setTool("text");
+      break;
+  }
+});
+
 
 updateGrid();
 updateLayersPanel();
