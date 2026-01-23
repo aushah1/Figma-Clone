@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Document</title>
+    <link rel="stylesheet" href="style.css" />
+    <link
+      href="https://cdn.jsdelivr.net/npm/remixicon@4.8.0/fonts/remixicon.css"
+      rel="stylesheet" />
+  </head>
+  <body>
+    <div class="app-container">
+      <div class="main-content">
+        <div class="panel layers-panel">
+          <h4>Layers</h4>
+          <div class="layers">
+            <div class="layer">
+              <h5>Rectangle</h5>
+              <div class="icons">
+                <div class="lock">
+                  <i class="ri-lock-line"></i>
+                  <!-- <i class="ri-lock-unlock-line"></i> -->
+                </div>
+                <div class="eye">
+                  <i class="ri-eye-line"></i>
+                  <!-- <i class="ri-eye-off-line"></i> -->
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="canvas-container">
+          <div class="canvas-viewport">
+            <div class="grid-layer"></div>
+            <div id="canvas-world"></div>
+          </div>
+        </div>
+        <div class="panel properties-panel"></div>
+      </div>
+      <div class="toolbar">
+        <button class="tool select active" id="select" title="Select tool">
+          <i class="ri-cursor-fill"></i>
+        </button>
+        <button class="tool rectangle" id="rectangle" title="Rectangle tool">
+          <i class="ri-rectangle-line"></i>
+        </button>
+        <button class="tool circle" id="circle" title="Circle tool">
+          <i class="ri-circle-line"></i>
+        </button>
+        <button class="tool text" id="text" title="Text tool">
+          <i class="ri-text"></i>
+        </button>
+      </div>
+    </div>
+    <script src="script.js"></script>
+  </body>
+</html>
