@@ -2,6 +2,10 @@ const tools = document.querySelectorAll(".tool");
 const canvasViewport = document.querySelector(".canvas-viewport");
 const canvasWorld = document.querySelector("#canvas-world");
 const gridLayer = document.querySelector(".grid-layer");
+const layersPanel = document.querySelector(".layers");
+const bringToFrontBtn = document.getElementById("bringToFront");
+const sendToBackBtn = document.getElementById("sendToBack");
+const contextMenu = document.getElementById("context-menu");
 
 let elements = [];
 let currentTool = "select";
@@ -18,6 +22,9 @@ let panX = 0;
 let panY = 0;
 let scale = 1;
 let isPanning = false;
+let isRotating = false;
+let rotateStartAngle = 0;
+let rotateStartValue = 0;
 let panStart = { x: 0, y: 0 };
 const BASE_GRID_SIZE = 100;
 const WORLD_SIZE = 10000;
@@ -25,6 +32,11 @@ let isSpacePressed = false;
 let isEditingText = false;
 let dragStart = { x: 0, y: 0 };
 let hasMoved = false;
+let selectedLayerId = null;
+let layers = [];
+let clipboardElement = null;
+
+const STORAGE_KEY = "canvas-elements";
 
 canvasWorld.style.width = WORLD_SIZE + "px";
 canvasWorld.style.height = WORLD_SIZE + "px";
@@ -44,6 +56,342 @@ function getWorldPoint(e) {
   };
 }
 
+function saveToLocalStorage() {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(elements));
+}
+
+function loadFromLocalStorage() {
+  const saved = localStorage.getItem(STORAGE_KEY);
+  if (!saved) return;
+
+  elements = JSON.parse(saved);
+
+  canvasWorld.innerHTML = "";
+  elements.forEach((data) => {
+    createElementFromData(data);
+  });
+
+  updateLayersPanel();
+}
+
+function exportJSON() {
+  const data = {
+    version: 1,
+    scale,
+    elements,
+  };
+
+  const blob = new Blob([JSON.stringify(data, null, 2)], {
+    type: "application/json",
+  });
+
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "design.json";
+  a.click();
+
+  URL.revokeObjectURL(url);
+}
+
+function exportHTML() {
+  const body = elements.map(elementToHTML).join("\n");
+
+  const html = `
+    <!DOCTYPE html>
+    <html>
+    <head>
+    <meta charset="UTF-8" />
+    <title>Exported Design</title>
+    </head>
+    <body style="margin:0; position:relative; width:${WORLD_SIZE}px; height:${WORLD_SIZE}px; background-color:#1e1e1e;">
+    ${body}
+    </body>
+    </html>
+`;
+
+  const blob = new Blob([html], { type: "text/html" });
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "design.html";
+  a.click();
+
+  URL.revokeObjectURL(url);
+}
+
+function elementToHTML(el) {
+  let style = `
+    position:absolute;
+    left:${el.x}px;
+    top:${el.y}px;
+    width:${el.width}px;
+    height:${el.height}px;
+  `;
+
+  if (el.type === "rectangle" || el.type === "circle") {
+    style += `
+      background:${el.fill || "#d9d9d9"};
+      border-radius:${el.type === "circle" ? "50%" : el.borderRadius || "0px"};
+    `;
+  }
+
+  if (el.type === "text") {
+    style += `
+      color:${el.fill || "#000"};
+      font-size:${el.fontSize || 16}px;
+      background:transparent;
+    `;
+  }
+
+  return `<div style="${style}">${el.text || ""}</div>`;
+}
+
+function updateLayersPanel() {
+  layersPanel.innerHTML = "";
+
+  const sortedElements = [...elements].reverse();
+
+  sortedElements.forEach((element, index) => {
+    const layerDiv = document.createElement("div");
+    layerDiv.className = `layer ${selectedLayerId === element.id ? "active" : ""}`;
+    layerDiv.dataset.id = element.id;
+
+    const displayName =
+      element.type === "text" && element.text
+        ? element.text.substring(0, 15) +
+          (element.text.length > 15 ? "..." : "")
+        : element.type.charAt(0).toUpperCase() + element.type.slice(1);
+
+    layerDiv.innerHTML = `
+      <div class="layer-content">
+        <span class="layer-name">${displayName}</span>
+        <span class="layer-type">${element.type}</span>
+      </div>
+      <div class="layer-icons">
+        <div class="lock">
+          <i class="ri-lock-${element.locked ? "line" : "unlock-line"}"></i>
+        </div>
+        <div class="eye">
+          <i class="ri-eye-${element.visible ? "line" : "off-line"}"></i>
+        </div>
+      </div>
+    `;
+
+    layerDiv.addEventListener("click", (e) => {
+      if (e.target.closest(".lock") || e.target.closest(".eye")) {
+        return;
+      }
+
+      selectLayer(element.id);
+    });
+
+    const lockIcon = layerDiv.querySelector(".lock i");
+    lockIcon.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleLock(element.id);
+    });
+
+    const eyeIcon = layerDiv.querySelector(".eye i");
+    eyeIcon.addEventListener("click", (e) => {
+      e.stopPropagation();
+      toggleVisibility(element.id);
+    });
+
+    layersPanel.appendChild(layerDiv);
+  });
+}
+
+function selectLayer(layerId) {
+  if (selectedElement) {
+    selectedElement.style.outline = "";
+    removeResizeHandles();
+  }
+
+  const element = elements.find((el) => el.id === layerId);
+  if (!element || element.locked) return;
+
+  selectedLayerId = layerId;
+  selectedElement = canvasWorld.querySelector(`[data-id="${layerId}"]`);
+
+  if (selectedElement && !element.locked) {
+    selectedElement.style.outline = "2px solid blue";
+    addResizeHandles(selectedElement);
+  }
+
+  updateLayersPanel();
+}
+
+function toggleLock(layerId) {
+  const element = elements.find((el) => el.id === layerId);
+  if (!element) return;
+  if (element.locked && selectedLayerId === layerId) {
+    selectedElement = null;
+    selectedLayerId = null;
+    removeResizeHandles();
+  }
+
+  element.locked = !element.locked;
+
+  const domElement = canvasWorld.querySelector(`[data-id="${layerId}"]`);
+  if (domElement) {
+    if (element.locked) {
+      domElement.style.pointerEvents = "none";
+      if (selectedElement === domElement) {
+        domElement.style.outline = "";
+        removeResizeHandles();
+        selectedElement = null;
+      }
+    } else {
+      domElement.style.pointerEvents = "auto";
+    }
+  }
+
+  updateLayersPanel();
+}
+
+function toggleVisibility(layerId) {
+  const element = elements.find((el) => el.id === layerId);
+  if (!element) return;
+
+  element.visible = !element.visible;
+
+  const domElement = canvasWorld.querySelector(`[data-id="${layerId}"]`);
+  if (domElement) {
+    domElement.style.display = element.visible ? "block" : "none";
+  }
+
+  updateLayersPanel();
+}
+
+function bringToFront(layerId) {
+  const elementIndex = elements.findIndex((el) => el.id === layerId);
+  if (elementIndex === -1) return;
+
+  const [element] = elements.splice(elementIndex, 1);
+  elements.push(element);
+
+  const domElement = canvasWorld.querySelector(`[data-id="${layerId}"]`);
+  if (domElement) {
+    canvasWorld.appendChild(domElement);
+  }
+
+  updateLayersPanel();
+}
+
+function sendToBack(layerId) {
+  const elementIndex = elements.findIndex((el) => el.id === layerId);
+  if (elementIndex === -1) return;
+
+  const [element] = elements.splice(elementIndex, 1);
+  elements.unshift(element);
+
+  const domElement = canvasWorld.querySelector(`[data-id="${layerId}"]`);
+  if (domElement) {
+    canvasWorld.insertBefore(domElement, canvasWorld.firstChild);
+  }
+
+  updateLayersPanel();
+}
+
+function createElementFromData(data) {
+  let el = document.createElement("div");
+
+  el.classList.add("element");
+  el.dataset.id = data.id;
+  el.dataset.type = data.type;
+  el.style.position = "absolute";
+
+  if (data.type === "rectangle") {
+    el.style.backgroundColor = "#d9d9d9";
+  }
+
+  if (data.type === "circle") {
+    el.style.backgroundColor = "#d9d9d9";
+    el.style.borderRadius = "50%";
+  }
+
+  if (data.type === "text") {
+    el.contentEditable = false;
+    el.innerText = data.text || "Enter your text";
+    el.style.minWidth = "50px";
+    el.style.minHeight = "20px";
+    el.style.color = "#d9d9d9";
+    el.style.fontSize = "16px";
+    el.style.padding = "2px";
+    el.style.background = "transparent";
+  }
+
+  canvasWorld.appendChild(el);
+  renderElement(data);
+
+  return el;
+}
+
+window.addEventListener("keydown", (e) => {
+  if (!selectedLayerId) return;
+
+  if ((e.ctrlKey || e.metaKey) && e.key === "]") {
+    e.preventDefault();
+    bringToFront(selectedLayerId);
+  }
+
+  if ((e.ctrlKey || e.metaKey) && e.key === "[") {
+    e.preventDefault();
+    sendToBack(selectedLayerId);
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+    if (!selectedElement) return;
+
+    const data = getElementData(selectedElement);
+    if (!data) return;
+    clipboardElement = { ...data };
+    saveToLocalStorage();
+  }
+  if ((e.ctrlKey || e.metaKey) && e.key === "v") {
+    if (!clipboardElement) return;
+
+    const newData = {
+      ...clipboardElement,
+      id: crypto.randomUUID(),
+      x: clipboardElement.x + 20,
+      y: clipboardElement.y + 20,
+    };
+
+    elements.push(newData);
+    createElementFromData(newData);
+    saveToLocalStorage();
+  }
+});
+
+if (bringToFrontBtn) {
+  bringToFrontBtn.addEventListener("click", () => {
+    if (selectedLayerId) bringToFront(selectedLayerId);
+  });
+}
+
+if (sendToBackBtn) {
+  sendToBackBtn.addEventListener("click", () => {
+    if (selectedLayerId) sendToBack(selectedLayerId);
+  });
+}
+
+window.addEventListener("keydown", (e) => {
+  if (e.key === "Delete" && selectedLayerId) {
+    elements = elements.filter((el) => el.id !== selectedLayerId);
+    const domElement = canvasWorld.querySelector(
+      `[data-id="${selectedLayerId}"]`,
+    );
+    if (domElement) domElement.remove();
+    selectedLayerId = null;
+    selectedElement = null;
+    clearPropertiesPanel();
+    updateLayersPanel();
+    saveToLocalStorage();
+  }
+});
 function createElementData(type, x, y) {
   return {
     id: crypto.randomUUID(),
@@ -52,7 +400,18 @@ function createElementData(type, x, y) {
     y,
     width: 0,
     height: 0,
-    text: type === "text" ? "" : null,
+    opacity: 1,
+    rotation: 0,
+    fill: type === "text" ? "transparent" : "#d9d9d9",
+    stroke: null,
+    strokeWidth: 0,
+    borderRadius: type === "circle" ? "50%" : 0,
+    text: type === "text" ? "Enter your text" : null,
+    fontSize: type === "text" ? 16 : null,
+
+    zIndex: elements.length + 1,
+    visible: true,
+    locked: false,
   };
 }
 
@@ -65,20 +424,57 @@ function updateGrid() {
   gridLayer.style.backgroundSize = `${gridSize}px ${gridSize}px`;
   gridLayer.style.backgroundPosition = `${offsetX}px ${offsetY}px`;
 }
-
-function renderElement(elData) {
-  const el = document.querySelector(`[data-id="${elData.id}"]`);
+function renderElement(data) {
+  const el = canvasWorld.querySelector(`[data-id="${data.id}"]`);
   if (!el) return;
 
-  el.style.left = elData.x + "px";
-  el.style.top = elData.y + "px";
-  el.style.width = elData.width + "px";
-  el.style.height = elData.height + "px";
+  el.style.left = data.x + "px";
+  el.style.top = data.y + "px";
+  el.style.width = data.width + "px";
+  el.style.height = data.height + "px";
+  el.style.zIndex = data.zIndex;
+  el.style.boxSizing = "border-box";
+
+  el.style.display = data.visible ? "block" : "none";
+
+  el.style.opacity = data.opacity ?? 1;
+  el.style.backgroundColor = data.fill;
+  el.style.color = data.color;
+  el.style.borderRadius =
+    typeof data.borderRadius === "number"
+      ? data.borderRadius + "px"
+      : data.borderRadius || "0px";
+
+  if (data.stroke && data.strokeWidth > 0) {
+    el.style.border = `${data.strokeWidth}px solid ${data.stroke}`;
+  } else {
+    el.style.border = "none";
+  }
+  if (data.zIndex !== undefined) {
+    el.style.zIndex = data.zIndex;
+  }
+
+  el.style.transform = `rotate(${data.rotation || 0}deg)`;
+  el.style.transformOrigin = "center center";
+
+  if (data.type === "text") {
+    el.innerText = data.text ?? "";
+    el.style.fontSize = (data.fontSize ?? 16) + "px";
+  }
+  saveToLocalStorage();
 }
 
 function getElementData(domEl) {
-  if (!domEl || !domEl.dataset.id) return null;
-  return elements.find((el) => el.id === domEl.dataset.id);
+  if (!domEl) return null;
+  const el = domEl.closest(".element");
+  if (!el || !el.dataset.id) return null;
+  return elements.find((elData) => elData.id === el.dataset.id);
+}
+
+//------------Find Elem-------------------
+function getSelectedData() {
+  if (!selectedLayerId) return null;
+  return elements.find((el) => el.id === selectedLayerId);
 }
 
 // Tool selection
@@ -97,9 +493,34 @@ tools.forEach((tool) => {
 
 //---------------DRAW-----------------
 canvasViewport.addEventListener("mousedown", (e) => {
+  e.preventDefault();
   const { x, y } = getWorldPoint(e);
 
-  //------------Panning---------------\
+  if (
+    currentTool === "select" &&
+    e.target.classList.contains("rotate-handle")
+  ) {
+    e.preventDefault();
+
+    isRotating = true;
+    selectedElement = e.target.parentElement;
+    const data = getElementData(selectedElement);
+    if (!data) return;
+
+    const centerX = data.x + data.width / 2;
+    const centerY = data.y + data.height / 2;
+
+    const { x: wx, y: wy } = getWorldPoint(e);
+
+    rotateStartAngle = Math.atan2(wy - centerY, wx - centerX);
+    rotateStartValue = data.rotation || 0;
+
+    rotateStartValue = data.rotation;
+
+    return;
+  }
+
+  //------------Panning---------------
   if (isSpacePressed && e.button === 0) {
     e.preventDefault();
     if (isEditingText) return;
@@ -121,6 +542,7 @@ canvasViewport.addEventListener("mousedown", (e) => {
     selectedElement = e.target.parentElement;
 
     const data = getElementData(selectedElement);
+    if (!data) return;
 
     selectedElement._resizeStart = {
       x: data.x,
@@ -158,6 +580,9 @@ canvasViewport.addEventListener("mousedown", (e) => {
     canvasWorld.appendChild(rect);
 
     currentElement = rect;
+    updateLayersPanel();
+    selectLayer(data.id);
+    updatePropertiesPanel();
   }
   //-----------------CIRCLE-------------------
   if (currentTool === "circle") {
@@ -182,7 +607,8 @@ canvasViewport.addEventListener("mousedown", (e) => {
     canvasWorld.appendChild(circle);
 
     currentElement = circle;
-    renderElement(data);
+    updateLayersPanel();
+    selectLayer(data.id);
   }
 
   //-----------------TEXT-------------------------------------
@@ -191,6 +617,8 @@ canvasViewport.addEventListener("mousedown", (e) => {
     data.width = 100;
     data.height = 30;
     elements.push(data);
+    updateLayersPanel();
+    selectLayer(data.id);
 
     let textDiv = document.createElement("div");
     textDiv.dataset.id = data.id;
@@ -206,13 +634,19 @@ canvasViewport.addEventListener("mousedown", (e) => {
     textDiv.style.padding = "2px";
     textDiv.style.background = "transparent";
     textDiv.innerText = "Enter your text";
-    textDiv.contentEditable = true;
+    textDiv.style.pointerEvents = "auto";
+    textDiv.contentEditable = false;
     textDiv.focus();
-    isEditingText = true;
+    isEditingText = false;
 
     canvasWorld.appendChild(textDiv);
 
     currentElement = textDiv;
+    updateLayersPanel();
+    selectLayer(data.id);
+    currentTool = "select";
+    tools.forEach((t) => t.classList.remove("active"));
+    document.getElementById("select").classList.add("active");
 
     textDiv.addEventListener("blur", () => {
       textDiv.contentEditable = false;
@@ -225,6 +659,10 @@ canvasViewport.addEventListener("mousedown", (e) => {
       data.height = textDiv.offsetHeight;
 
       renderElement(data);
+
+      currentTool = "select";
+      tools.forEach((t) => t.classList.remove("active"));
+      document.getElementById("select").classList.add("active");
     });
     textDiv.addEventListener("focus", () => {
       isEditingText = true;
@@ -241,8 +679,14 @@ canvasViewport.addEventListener("mousedown", (e) => {
 
   // -----------------Select tool------------
   else if (currentTool === "select") {
-    if (isEditingText) return;
+    if (isEditingText && e.target.dataset.type === "text") {
+      e.target.contentEditable = false;
+      isEditingText = false;
+    }
     if (e.target.classList.contains("element")) {
+      const isdata = getElementData(e.target);
+      if (!isdata || isdata.locked) return;
+
       if (selectedElement) {
         selectedElement.style.outline = "";
         removeResizeHandles();
@@ -253,18 +697,24 @@ canvasViewport.addEventListener("mousedown", (e) => {
       addResizeHandles(selectedElement);
 
       const data = getElementData(selectedElement);
+      if (!data) return;
+
       offsetX = x - data.x;
       offsetY = y - data.y;
-      dragStart.x = e.clientX;
-      dragStart.y = e.clientY;
-      hasMoved = false;
+      selectLayer(data.id);
+
+      isDrawing = true;
     } else {
       if (selectedElement) {
         selectedElement.style.outline = "";
         removeResizeHandles();
         selectedElement = null;
+        selectedLayerId = null;
+        updateLayersPanel();
+        clearPropertiesPanel();
       }
     }
+    updatePropertiesPanel();
   }
 });
 
@@ -276,44 +726,61 @@ canvasViewport.addEventListener("mousemove", (e) => {
   if (isDrawing && currentTool === "rectangle" && currentElement) {
     const data = getElementData(currentElement);
 
-    const dx = Math.abs(e.clientX - dragStart.x);
-    const dy = Math.abs(e.clientY - dragStart.y);
-
-    if ((dx > 3 || dy > 3) && selectedElement && !isEditingText) {
-      isDrawing = true;
+    data.width = Math.max(0, x - startX);
+    data.height = Math.max(0, y - startY);
+    if (x < startX) {
+      data.x = x;
+      data.width = startX - x;
+    } else {
+      data.x = startX;
     }
 
-    data.width = Math.abs(x - startX);
-    data.height = Math.abs(y - startY);
-    data.x = Math.min(x, startX);
-    data.y = Math.min(y, startY);
+    if (y < startY) {
+      data.y = y;
+      data.height = startY - y;
+    } else {
+      data.y = startY;
+    }
 
     renderElement(data);
+    updatePropertiesPanel();
   }
-
-  // ------------------- circle ---------------
   if (isDrawing && currentTool === "circle" && currentElement) {
     const data = getElementData(currentElement);
 
-    data.width = Math.abs(x - startX);
-    data.height = Math.abs(y - startY);
-    data.x = Math.min(x, startX);
-    data.y = Math.min(y, startY);
+    data.width = Math.max(0, x - startX);
+    data.height = Math.max(0, y - startY);
+    if (x < startX) {
+      data.x = x;
+      data.width = startX - x;
+    } else {
+      data.x = startX;
+    }
+
+    if (y < startY) {
+      data.y = y;
+      data.height = startY - y;
+    } else {
+      data.y = startY;
+    }
 
     renderElement(data);
+    updatePropertiesPanel();
   }
   // ------------element-----------
   if (isDrawing && currentTool === "select" && selectedElement && !isResizing) {
     const data = getElementData(selectedElement);
+    if (!data || data.locked) return;
     data.x = x - offsetX;
     data.y = y - offsetY;
     renderElement(data);
-    isDrawing = false;
   }
 
   //------------Resize-----------------
   if (isResizing && selectedElement) {
     const data = getElementData(selectedElement);
+    if (!data) return;
+
     const start = selectedElement._resizeStart;
 
     let dx = x - start.mouseX;
@@ -341,7 +808,26 @@ canvasViewport.addEventListener("mousemove", (e) => {
     data.height = Math.max(20, data.height);
 
     renderElement(data);
+    updatePropertiesPanel();
   }
+  //---------------rotate-----------
+  if (isRotating && selectedElement) {
+    const data = getElementData(selectedElement);
+    if (!data) return;
+
+    const centerX = data.x + data.width / 2;
+    const centerY = data.y + data.height / 2;
+
+    const { x: wx, y: wy } = getWorldPoint(e);
+
+    const currentAngle = Math.atan2(wy - centerY, wx - centerX);
+    const delta = currentAngle - rotateStartAngle;
+
+    data.rotation = rotateStartValue + (delta * 180) / Math.PI;
+    renderElement(data);
+    updatePropertiesPanel();
+  }
+
   //-----------Panning-----------
 
   if (isPanning) {
@@ -360,24 +846,48 @@ canvasViewport.addEventListener("dblclick", (e) => {
     e.target.classList.contains("element") &&
     e.target.dataset.type === "text"
   ) {
-    e.target.contentEditable = true;
-    e.target.focus();
+    const textEl = e.target;
+
+    textEl.contentEditable = true;
+    textEl.focus();
     isEditingText = true;
+
+    const range = document.createRange();
+    range.selectNodeContents(textEl);
+
+    const selection = window.getSelection();
+    selection.removeAllRanges();
+    selection.addRange(range);
   }
 });
 
 // -----------Stop------------------
 canvasViewport.addEventListener("mouseup", () => {
+  if (
+    isDrawing &&
+    (currentTool === "rectangle" ||
+      currentTool === "circle" ||
+      currentTool === "text") &&
+    !isEditingText
+  ) {
+    currentTool = "select";
+    tools.forEach((t) => t.classList.remove("active"));
+    document.getElementById("select").classList.add("active");
+  }
+
   isDrawing = false;
   currentElement = null;
   isResizing = false;
   isPanning = false;
+  isRotating = false;
   canvasViewport.style.cursor = isSpacePressed ? "grab" : "default";
+  saveToLocalStorage();
 });
 
 function addResizeHandles(element) {
   removeResizeHandles();
-
+  const data = getElementData(element);
+  if (!data || data.locked) return;
   const positions = ["nw", "ne", "se", "sw"];
   positions.forEach((pos) => {
     const handle = document.createElement("div");
@@ -386,11 +896,14 @@ function addResizeHandles(element) {
     element.appendChild(handle);
   });
 
-  element.dataset.ratio = element.offsetWidth / element.offsetHeight;
+  const rotateHandle = document.createElement("div");
+  rotateHandle.className = "rotate-handle";
+  element.appendChild(rotateHandle);
 }
 
 function removeResizeHandles() {
   document.querySelectorAll(".resize-handle").forEach((h) => h.remove());
+  document.querySelectorAll(".rotate-handle").forEach((h) => h.remove());
 }
 
 canvasViewport.addEventListener(
@@ -442,4 +955,227 @@ window.addEventListener("keyup", (e) => {
   }
 });
 
+function updatePropertiesPanel() {
+  const data = getSelectedData();
+  if (!data || !selectedElement) {
+    clearPropertiesPanel();
+    return;
+  }
+  document.querySelector(".properties-panel").style.display = "flex";
+
+  document.getElementById("input-x").value = Math.round(data.x);
+  document.getElementById("input-y").value = Math.round(data.y);
+
+  document.getElementById("input-w").value = Math.round(data.width);
+  document.getElementById("input-h").value = Math.round(data.height);
+
+  document.getElementById("fill-value").innerText = data.fill || "none";
+  document.getElementById("color-value").innerText = data.color || "none";
+  document.getElementById("stroke-value").innerText = data.stroke || "none";
+  document.getElementById("input-font").value = data.fontSize ?? 16;
+  document.getElementById("corner-radius").value =
+    typeof data.borderRadius === "number" ? data.borderRadius : 0;
+
+  document.getElementById("selected-item").innerText =
+    selectedElement.dataset.type || "";
+  document.getElementById("input-rotate").value = Math.round(
+    data.rotation || 0,
+  );
+
+  const el = canvasWorld.querySelector(`[data-id="${data.id}"]`);
+
+  document.getElementById("input-opacity").value = Math.round(
+    (el.style.opacity || 1) * 100,
+  );
+
+  if (data.type === "text") {
+    document.getElementById("input-font").value =
+      parseInt(el.style.fontSize) || 16;
+  }
+  if (data.fill && document.getElementById("input-fill")) {
+    document.getElementById("input-fill").value = data.fill;
+  }
+  if (data.color && document.getElementById("input-color")) {
+    document.getElementById("input-color").value = data.color;
+  }
+  if (document.getElementById("input-stroke")) {
+    document.getElementById("input-stroke").value = data.stroke || "#000000";
+  }
+
+  if (document.getElementById("input-stroke-width")) {
+    document.getElementById("input-stroke-width").value = data.strokeWidth || 0;
+  }
+}
+
+function clearPropertiesPanel() {
+  document.querySelector(".properties-panel").style.display = "none";
+}
+
+document.getElementById("input-x").addEventListener("input", (e) => {
+  const data = getSelectedData();
+  if (!data) return;
+
+  data.x = Number(e.target.value);
+  renderElement(data);
+});
+
+document.getElementById("input-y").addEventListener("input", (e) => {
+  const data = getSelectedData();
+  if (!data) return;
+
+  data.y = Number(e.target.value);
+  renderElement(data);
+});
+document.getElementById("input-w").addEventListener("input", (e) => {
+  const data = getSelectedData();
+  if (!data) return;
+
+  data.width = Number(e.target.value);
+  renderElement(data);
+});
+
+document.getElementById("input-h").addEventListener("input", (e) => {
+  const data = getSelectedData();
+  if (!data) return;
+
+  data.height = Number(e.target.value);
+  renderElement(data);
+});
+
+document.getElementById("input-opacity").addEventListener("input", (e) => {
+  const data = getSelectedData();
+  if (!data) return;
+
+  data.opacity = e.target.value / 100;
+  renderElement(data);
+});
+
+document.getElementById("input-font").addEventListener("input", (e) => {
+  const data = getSelectedData();
+  if (!data || data.type !== "text") return;
+
+  data.fontSize = Number(e.target.value);
+  renderElement(data);
+});
+
+document.getElementById("corner-radius").addEventListener("input", (e) => {
+  const data = getSelectedData();
+  if (!data) return;
+
+  data.borderRadius = e.target.value + "px";
+  renderElement(data);
+});
+
+document.getElementById("input-fill").addEventListener("input", (e) => {
+  const data = getSelectedData();
+  if (!data) return;
+
+  data.fill = e.target.value;
+  document.getElementById("fill-value").innerText = e.target.value;
+  renderElement(data);
+});
+document.getElementById("input-color").addEventListener("input", (e) => {
+  const data = getSelectedData();
+  if (!data) return;
+
+  data.color = e.target.value;
+  document.getElementById("color-value").innerText = e.target.value;
+  renderElement(data);
+});
+document.getElementById("input-stroke").addEventListener("input", (e) => {
+  const data = getSelectedData();
+  if (!data) return;
+
+  data.stroke = e.target.value;
+  document.getElementById("stroke-value").innerText = e.target.value;
+  renderElement(data);
+});
+
+document.getElementById("input-stroke-width").addEventListener("input", (e) => {
+  const data = getSelectedData();
+  if (!data) return;
+
+  data.strokeWidth = Number(e.target.value);
+  renderElement(data);
+});
+
+document.getElementById("input-rotate").addEventListener("input", (e) => {
+  const data = getSelectedData();
+  if (!data) return;
+
+  data.rotation = Number(e.target.value);
+  renderElement(data);
+});
+
+//------------Right Click------------
+
+canvasViewport.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+
+  if (!selectedElement) return;
+
+  contextMenu.style.display = "block";
+  contextMenu.style.left = e.clientX + "px";
+  contextMenu.style.top = e.clientY + "px";
+});
+window.addEventListener("click", () => {
+  contextMenu.style.display = "none";
+});
+
+contextMenu.addEventListener("click", (e) => {
+  const action = e.target.dataset.action;
+  if (!action) return;
+
+  if (!selectedElement) return;
+
+  const data = getElementData(selectedElement);
+  if (!data) return;
+
+  if (action === "copy") {
+    clipboardElement = structuredClone(data);
+  }
+
+  if (action === "paste" && clipboardElement) {
+    const newData = {
+      ...clipboardElement,
+      id: crypto.randomUUID(),
+      x: clipboardElement.x + 30,
+      y: clipboardElement.y + 30,
+    };
+
+    elements.push(newData);
+    createElementFromData(newData);
+  }
+
+  if (action === "front") {
+    bringToFront(data.id);
+  }
+
+  if (action === "back") {
+    sendToBack(data.id);
+  }
+  if (action === "delete") {
+    elements = elements.filter((el) => el.id !== selectedLayerId);
+    const domElement = canvasWorld.querySelector(
+      `[data-id="${selectedLayerId}"]`,
+    );
+    if (domElement) domElement.remove();
+    selectedLayerId = null;
+    selectedElement = null;
+    clearPropertiesPanel();
+    updateLayersPanel();
+    saveToLocalStorage();
+  }
+
+  contextMenu.style.display = "none";
+});
+document.getElementById("save").addEventListener("click", () => {
+  saveToLocalStorage();
+  alert("Canvas saved");
+});
+document.getElementById("export-json").addEventListener("click", exportJSON);
+document.getElementById("export-html").addEventListener("click", exportHTML);
+
 updateGrid();
+updateLayersPanel();
+loadFromLocalStorage();
