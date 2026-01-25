@@ -321,19 +321,24 @@ function createElementFromData(data) {
 }
 
 window.addEventListener("keydown", (e) => {
-  if (!selectedLayerId) return;
   if (isEditingText) return;
 
   if ((e.ctrlKey || e.metaKey) && e.key === "]") {
+    if (!selectedLayerId) return;
+
     e.preventDefault();
     bringToFront(selectedLayerId);
   }
 
   if ((e.ctrlKey || e.metaKey) && e.key === "[") {
+    if (!selectedLayerId) return;
+
     e.preventDefault();
     sendToBack(selectedLayerId);
   }
   if ((e.ctrlKey || e.metaKey) && e.key === "c") {
+    if (!selectedLayerId) return;
+
     if (!selectedElement) return;
 
     const data = getElementData(selectedElement);
@@ -347,12 +352,15 @@ window.addEventListener("keydown", (e) => {
     const newData = {
       ...clipboardElement,
       id: crypto.randomUUID(),
-      x: clipboardElement.x + 20,
-      y: clipboardElement.y + 20,
+      x: clipboardElement.x + 30,
+      y: clipboardElement.y + 30,
+      zIndex: elements.length + 1,
     };
 
     elements.push(newData);
     createElementFromData(newData);
+    normalizeZIndex();
+    updateLayersPanel();
     saveToLocalStorage();
   }
 });
@@ -1111,11 +1119,22 @@ document.getElementById("input-rotate").addEventListener("input", (e) => {
 canvasViewport.addEventListener("contextmenu", (e) => {
   e.preventDefault();
 
-  if (!selectedElement) return;
+  const isElement = e.target.classList.contains("element");
+
+  if (isElement) {
+    const data = getElementData(e.target);
+    if (data && !data.locked) {
+      selectLayer(data.id);
+    }
+  }
 
   contextMenu.style.display = "block";
   contextMenu.style.left = e.clientX + "px";
   contextMenu.style.top = e.clientY + "px";
+
+  contextMenu.querySelectorAll("[data-requires-selection]").forEach((item) => {
+    item.style.display = selectedElement ? "block" : "none";
+  });
 });
 window.addEventListener("click", () => {
   contextMenu.style.display = "none";
@@ -1125,35 +1144,60 @@ contextMenu.addEventListener("click", (e) => {
   const action = e.target.dataset.action;
   if (!action) return;
 
-  if (!selectedElement) return;
-
-  const data = getElementData(selectedElement);
-  if (!data) return;
-
   if (action === "copy") {
+    if (!selectedElement) return;
+
+    const data = getElementData(selectedElement);
+    if (!data) return;
     clipboardElement = structuredClone(data);
   }
 
   if (action === "paste" && clipboardElement) {
+    if (!clipboardElement) return;
+
     const newData = {
       ...clipboardElement,
       id: crypto.randomUUID(),
       x: clipboardElement.x + 30,
       y: clipboardElement.y + 30,
+      zIndex: elements.length + 1,
     };
 
     elements.push(newData);
     createElementFromData(newData);
+    normalizeZIndex();
+    updateLayersPanel();
+    saveToLocalStorage();
+    contextMenu.style.display = "none";
+    return;
   }
 
   if (action === "front") {
+    if (!selectedElement) return;
+
+    const data = getElementData(selectedElement);
+    if (!data) return;
     bringToFront(data.id);
+    normalizeZIndex();
+    updateLayersPanel();
+    saveToLocalStorage();
   }
 
   if (action === "back") {
+    if (!selectedElement) return;
+
+    const data = getElementData(selectedElement);
+    if (!data) return;
     sendToBack(data.id);
+    normalizeZIndex();
+    updateLayersPanel();
+    saveToLocalStorage();
   }
   if (action === "delete") {
+    if (!selectedElement) return;
+
+    const data = getElementData(selectedElement);
+    if (!data) return;
     elements = elements.filter((el) => el.id !== selectedLayerId);
     const domElement = canvasWorld.querySelector(
       `[data-id="${selectedLayerId}"]`,
