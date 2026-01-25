@@ -266,6 +266,14 @@ function toggleVisibility(layerId) {
   updateLayersPanel();
 }
 
+function normalizeZIndex() {
+  elements.forEach((el, index) => {
+    el.zIndex = index + 1;
+    const dom = canvasWorld.querySelector(`[data-id="${el.id}"]`);
+    if (dom) dom.style.zIndex = el.zIndex;
+  });
+}
+
 function bringToFront(layerId) {
   const elementIndex = elements.findIndex((el) => el.id === layerId);
   if (elementIndex === -1) return;
@@ -273,12 +281,9 @@ function bringToFront(layerId) {
   const [element] = elements.splice(elementIndex, 1);
   elements.push(element);
 
-  const domElement = canvasWorld.querySelector(`[data-id="${layerId}"]`);
-  if (domElement) {
-    canvasWorld.appendChild(domElement);
-  }
-
+  normalizeZIndex();
   updateLayersPanel();
+  saveToLocalStorage();
 }
 
 function sendToBack(layerId) {
@@ -288,12 +293,9 @@ function sendToBack(layerId) {
   const [element] = elements.splice(elementIndex, 1);
   elements.unshift(element);
 
-  const domElement = canvasWorld.querySelector(`[data-id="${layerId}"]`);
-  if (domElement) {
-    canvasWorld.insertBefore(domElement, canvasWorld.firstChild);
-  }
-
+  normalizeZIndex();
   updateLayersPanel();
+  saveToLocalStorage();
 }
 
 function createElementFromData(data) {
@@ -1199,7 +1201,6 @@ window.addEventListener("keydown", (e) => {
       break;
   }
 });
-
 
 updateGrid();
 updateLayersPanel();
