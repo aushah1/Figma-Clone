@@ -3,179 +3,166 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Figma-Clone</title>
+    <title>Canvas — Design Tool</title>
     <link rel="stylesheet" href="style.css" />
-    <link
-      href="https://cdn.jsdelivr.net/npm/remixicon@4.8.0/fonts/remixicon.css"
-      rel="stylesheet" />
+    <link href="https://cdn.jsdelivr.net/npm/remixicon@4.8.0/fonts/remixicon.css" rel="stylesheet" />
   </head>
   <body>
     <div class="app-container">
       <div class="main-content">
+
+        <!-- Layers Panel -->
         <div class="panel layers-panel">
           <h4>Layers</h4>
-          <div class="layers">
-            <!-- <div class="layer">
-              <h5>Rectangle</h5>
-              <div class="icons">
-                <div class="lock">
-                  <i class="ri-lock-line"></i>
-                  <i class="ri-lock-unlock-line"></i>
-                </div>
-                <div class="eye">
-                  <i class="ri-eye-line"></i>
-                  <i class="ri-eye-off-line"></i>
-                </div>
-              </div>
-            </div> -->
-          </div>
+          <div class="layers"></div>
         </div>
+
+        <!-- Canvas -->
         <div class="canvas-container">
           <div class="canvas-viewport">
             <div class="grid-layer"></div>
             <div id="canvas-world"></div>
           </div>
         </div>
+
+        <!-- Properties Panel -->
         <div class="panel properties-panel">
-          <div class="name" id="selected-item">Selected Item</div>
-          <div class="line"></div>
+          <div class="name" id="selected-item">No selection</div>
 
           <div class="position box">
             <h4>Position</h4>
-            <p>Position</p>
+            <p>Coordinates</p>
             <div class="property">
               <div class="x" id="prop-x">
-                <span>X </span> <input id="input-x" type="number" />
+                <span>X</span><input id="input-x" type="number" />
               </div>
               <div class="y" id="prop-y">
-                <span>Y </span> <input id="input-y" type="number" />
+                <span>Y</span><input id="input-y" type="number" />
               </div>
             </div>
-            <p>rotation</p>
+            <p>Rotation</p>
             <div class="property">
               <div class="rotate">
-                <span></span><input type="number" id="input-rotate" />
+                <span>°</span><input type="number" id="input-rotate" />
               </div>
             </div>
           </div>
-          <div class="line"></div>
 
           <div class="layout box">
             <h4>Layout</h4>
             <p>Dimensions</p>
             <div class="property">
               <div class="width" id="prop-w">
-                <span>W </span> <input id="input-w" type="number" />
+                <span>W</span><input id="input-w" type="number" />
               </div>
               <div class="height" id="prop-h">
-                <span>H </span> <input id="input-h" type="number" />
+                <span>H</span><input id="input-h" type="number" />
               </div>
             </div>
           </div>
-          <div class="line"></div>
 
           <div class="appearance box">
             <h4>Appearance</h4>
             <p>Opacity</p>
             <div class="property">
               <div class="opacity" id="prop-opacity">
-                <span></span>
-                <input id="input-opacity" type="number" min="0" max="100" />
+                <span>%</span><input id="input-opacity" type="number" min="0" max="100" />
               </div>
             </div>
-            <p>Corner radius</p>
+            <p>Corner Radius</p>
             <div class="property">
-              <div class="Corner radius">
-                <span></span><input id="corner-radius" type="number" min="0" />
+              <div class="corner-radius">
+                <span>R</span><input id="corner-radius" type="number" min="0" />
               </div>
             </div>
           </div>
-          <div class="line"></div>
 
           <div class="typography box">
             <h4>Typography</h4>
-            <p>Font size</p>
+            <p>Font Size</p>
             <div class="property">
               <div class="font-size" id="prop-font">
-                <span></span><input id="input-font" type="number" min="8" />
+                <span>px</span><input id="input-font" type="number" min="8" />
               </div>
             </div>
           </div>
-          <div class="line"></div>
 
           <div class="fill box">
             <h4>Fill</h4>
             <div class="property">
               <div class="fill">
-                <span
-                  ><input class="color-pick" id="input-fill" type="color"
-                /></span>
+                <span><input class="color-pick" id="input-fill" type="color" /></span>
                 <span id="fill-value">#d9d9d9</span>
               </div>
             </div>
           </div>
+
           <div class="fill box">
             <h4>Color</h4>
             <div class="property">
               <div class="color">
-                <span
-                  ><input
-                    class="color-pick"
-                    id="input-color"
-                    type="color" /></span
-                ><span id="color-value">#d9d9d9</span>
+                <span><input class="color-pick" id="input-color" type="color" /></span>
+                <span id="color-value">#d9d9d9</span>
               </div>
             </div>
           </div>
-          <div class="line"></div>
+
           <div class="stroke box">
             <h4>Stroke</h4>
             <p>Color</p>
             <div class="property">
               <div class="border">
-                <span
-                  ><input
-                    class="color-pick"
-                    id="input-stroke"
-                    type="color" /></span
-                ><span id="stroke-value">#d9d9d9</span>
+                <span><input class="color-pick" id="input-stroke" type="color" /></span>
+                <span id="stroke-value">#d9d9d9</span>
               </div>
             </div>
             <p>Width</p>
             <div class="property">
               <div class="border-width">
-                <span>W </span><input id="input-stroke-width" type="number" />
+                <span>W</span><input id="input-stroke-width" type="number" />
               </div>
             </div>
           </div>
         </div>
       </div>
+
+      <!-- Toolbar -->
       <div class="toolbar">
-        <button class="tool select active" id="select" title="Select tool">
+        <button class="tool select active" id="select" title="Select (V)">
           <i class="ri-cursor-fill"></i>
         </button>
-        <button class="tool rectangle" id="rectangle" title="Rectangle tool">
+        <button class="tool rectangle" id="rectangle" title="Rectangle (R)">
           <i class="ri-rectangle-line"></i>
         </button>
-        <button class="tool circle" id="circle" title="Circle tool">
+        <button class="tool circle" id="circle" title="Circle (O)">
           <i class="ri-circle-line"></i>
         </button>
-        <button class="tool text" id="text" title="Text tool">
+        <button class="tool text" id="text" title="Text (T)">
           <i class="ri-text"></i>
         </button>
       </div>
+
+      <!-- Saves -->
       <div class="saves">
-        <button class="save" id="save">Save</button>
-        <button class="export" id="export-json">Export as json</button>
-        <button class="export" id="export-html">Export as html</button>
+        <button class="save" id="save">
+          <i class="ri-save-3-line"></i> Save
+        </button>
+        <button class="export" id="export-json">
+          <i class="ri-code-box-line"></i> JSON
+        </button>
+        <button class="export" id="export-html">
+          <i class="ri-file-code-line"></i> HTML
+        </button>
       </div>
     </div>
+
+    <!-- Context Menu -->
     <div id="context-menu">
-      <div data-action="copy">Copy</div>
-      <div data-action="paste">Paste</div>
-      <div data-action="front">Bring to front</div>
-      <div data-action="back">Send to back</div>
-      <div data-action="delete">Delete Element</div>
+      <div data-action="copy"><i class="ri-file-copy-line"></i> Copy</div>
+      <div data-action="paste"><i class="ri-clipboard-line"></i> Paste</div>
+      <div data-action="front"><i class="ri-bring-to-front"></i> Bring to front</div>
+      <div data-action="back"><i class="ri-send-to-back"></i> Send to back</div>
+      <div data-action="delete"><i class="ri-delete-bin-line"></i> Delete</div>
     </div>
 
     <script src="script.js"></script>
